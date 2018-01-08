@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -20,9 +21,7 @@ namespace Takuzu_Solver_and_Generator {
     public partial class MainWindow : Window {
         // Vars
         readonly Button[] playCells, solveCells;
-        private event Action<int> update;
-        private Int64 count = 0;
-        private Int64 maxCount = 0;
+        ConcurrentBag<string> solutions = new ConcurrentBag<string>();
 
         // INIT
         public MainWindow() {
@@ -56,14 +55,9 @@ namespace Takuzu_Solver_and_Generator {
 
         // SOL
         private void BtnSolve_Sol_Click(object sender, RoutedEventArgs e) {
-            count = 0;
-            maxCount = (Int64)Math.Round(Math.Pow(2, (tbCode_Sol.Text.Length - tbCode_Sol.Text.Replace("e", "").Length)));
-            tbSolution_Sol.Text = "";
-
-            update += updatePbSolve;
-            trySolve(tbCode_Sol.Text);
-            update -= updatePbSolve;
-            updatePbSolve(100);
+            tbSolution_Sol.Text = "";            
+            trySolve(tbCode_Sol.Text, tbCode_Sol.Text);
+            tbSolution_Sol.Text = "DONE!";
         }
 
         private void BtnFill_Sol_Click(object sender, RoutedEventArgs e) {
@@ -113,23 +107,43 @@ namespace Takuzu_Solver_and_Generator {
         }
 
         // HELPERS
-        private void trySolve(string input) {
+        private void trySolve(string input, string original) {
             StringBuilder s = new StringBuilder(input);
 
             // End point?
-            if ((input.Length - input.Replace("e", "").Length) == 0) {
-                update((int)((++count * 100) / maxCount));
-                var errors = CheckCodeIsSolution(input.ToString());
-                if (errors.Count == 0) tbSolution_Sol.AppendText("Sol: " + input.ToString() + "; ");
+            if (input.IndexOf('e') == -1) {
+                if ((input.Replace("0", "").Length) != 18) return;
+                if (QuickCheckCodeIsSolution(input.ToString())) {
+                    //tbSolution_Sol.AppendText("Sol: " + input.ToString() + "; ");
+                    solutions.Add(input);
+                }
+                //Console.WriteLine(progress(original, input));
                 return;
             }
+
+            // Branch cutting
+            if ((input.Length - input.Replace("0", "").Length) > 18) return; // Too many 0's
+            if ((input.Length - input.Replace("1", "").Length) > 18) return; // Too many 1's
+            for (int y = 0; y < 6; y++) if (input.Substring(y * 6, 6).Contains("000") || input.Substring(y * 6, 6).Contains("111")) return; // hors
+            for (int y = 0; y < 6; y++) {
+                var sub = " " + input[y] + input[y + 6] + input[y + 12] + input[y + 18] + input[y + 24] + input[y + 30];
+                if (sub.Contains("000") || sub.Contains("111")) return;
+            } // Vers
 
             // RECURSE ME
             int i = input.IndexOf('e');
             s[i] = '0';
-            trySolve(s.ToString());
+            trySolve(s.ToString(), original);
             s[i] = '1';
-            trySolve(s.ToString());
+            trySolve(s.ToString(), original);
+        }
+
+        private string progress(string original, string current) {
+            string returnable = "";
+            for (int i = 0; i < original.Length; i++) {
+                if (original[i] == 'e') returnable += current[i];
+            }
+            return returnable;
         }
 
         private void UpdateCode(Button[] cells, TextBox code) {
@@ -157,6 +171,27 @@ namespace Takuzu_Solver_and_Generator {
                 grid[i].Content = (code[i] == 'e') ? "" : "" + code[i];
                 if (code[i] != 'e') grid[i].IsEnabled = false;
                 else grid[i].IsEnabled = true;
+            }
+            return true;
+        }
+
+        private bool QuickCheckCodeIsSolution(string code) {
+            List<string> hors = new List<string>();
+            List<string> vers = new List<string>();
+            for (int i = 0; i < 6; i++) {
+                // Hors
+                string subHor = code.Substring(i * 6, 6);
+                if (hors.Contains(subHor)) return false;
+                if ((subHor.Length - subHor.Replace("0", "").Length) != 3) return false;
+                if (subHor.Contains("000") || subHor.Contains("111")) return false;
+                hors.Add(subHor);
+
+                // Vers
+                string subVer = " " + code[i] + code[i + 6] + code[i + 12] + code[i + 18] + code[i + 24] + code[i + 30];
+                if (vers.Contains(subVer)) return false;
+                if ((subVer.Length - subVer.Replace("0", "").Length) != 3) return false;
+                if (subVer.Contains("000") || subVer.Contains("111")) return false;
+                vers.Add(subVer);
             }
             return true;
         }
@@ -199,10 +234,6 @@ namespace Takuzu_Solver_and_Generator {
 
             // Return errors
             return errors;
-        }
-
-        void updatePbSolve(int progress) {
-            pbSolution_Sol.Value = progress;
         }
     }
 }
