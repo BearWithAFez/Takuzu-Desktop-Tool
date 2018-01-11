@@ -1,10 +1,13 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using Microsoft.Win32;
+using Newtonsoft.Json;
 
 namespace Takuzu_Solver_and_Generator {
     /// <summary>
@@ -13,7 +16,8 @@ namespace Takuzu_Solver_and_Generator {
     public partial class MainWindow : Window {
         // Vars
         readonly Button[] playCells, solveCells;
-        const int ATTEMPTS = 20; 
+        const int ATTEMPTS = 100000;
+        Random rnd = new Random();
         ConcurrentBag<string> solutions = new ConcurrentBag<string>();
         ConcurrentBag<string> puzzles = new ConcurrentBag<string>();
         ConcurrentBag<string> endStates = new ConcurrentBag<string>();
@@ -45,6 +49,8 @@ namespace Takuzu_Solver_and_Generator {
 
         // GEN 
         private void BtnGenerate_Gen_Click(object sender, RoutedEventArgs e) {
+            tbOutput_Gen.AppendText("New Generation started\n");
+            puzzles = new ConcurrentBag<string>();
             int attempts = 0;
             if (Int32.TryParse(tbDepth_Gen.Text, out int depth)) {
                 if (Int32.TryParse(tbDemand_Gen.Text, out int demand)) {
@@ -52,10 +58,11 @@ namespace Takuzu_Solver_and_Generator {
                         string puzzle = FindRandomPuzzle(depth);
                         if (puzzle == "noneFound") {
                             attempts++;
-                            tbOutput_Gen.AppendText("Miss...\n");
+                            tbOutput_Gen.AppendText("Miss (" + attempts +")\n");
                         } else if (!puzzles.Contains(puzzle)) {
                             puzzles.Add(puzzle);
                             tbOutput_Gen.AppendText("Hit!\n");
+                            attempts = 0;
                         } else {
                             tbOutput_Gen.AppendText("Duplicate hit.\n");
                         }
@@ -66,10 +73,24 @@ namespace Takuzu_Solver_and_Generator {
             } else {
                 tbOutput_Gen.AppendText("Depth is not a valid int!\n");
             }
+            tbOutput_Gen.AppendText(puzzles.Count + " puzzle(s) generated!\n");
+            tbOutput_Gen.ScrollToEnd();
+
+            btnSave_Gen.IsEnabled = puzzles.Count > 0;
         }
 
         private void BtnSave_Gen_Click(object sender, RoutedEventArgs e) {
-            //todo: implement after generate!
+            // Serialize to JSON
+            var jsonSerializer = JsonConvert.SerializeObject(puzzles);
+
+            // Save file
+            SaveFileDialog saveFileDialog = new SaveFileDialog {
+                Filter = "JSON Files (*.json)|*.json",
+                DefaultExt = "json",
+                AddExtension = true
+            };
+            if (saveFileDialog.ShowDialog() == true)
+                File.WriteAllText(saveFileDialog.FileName, jsonSerializer);
         }
 
         // SOL
@@ -152,10 +173,9 @@ namespace Takuzu_Solver_and_Generator {
                     break;
                 default:
                     // Unknown solve style
-                    Console.WriteLine("Unknown style used?");
                     break;
             }
-            Console.WriteLine(DateTime.Now.Subtract(start).TotalSeconds + "s used to calculate current solution");
+            tbOutput_Sol.AppendText(DateTime.Now.Subtract(start).TotalSeconds + "s used to calculate current solution");
         }
 
         /// <summary>
@@ -466,9 +486,15 @@ namespace Takuzu_Solver_and_Generator {
             return sub;
         }
 
+        /// <summary>
+        /// Searches a random puzzle
+        /// </summary>
+        /// <param name="depth">number of unknowns</param>
+        /// <returns></returns>
         private string FindRandomPuzzle(int depth) {
             // Make sure there are endStates avaible
             if(endStates.Count == 0) {
+                tbOutput_Gen.AppendText("Generating endstates \n");
                 solutions = new ConcurrentBag<string>();
                 TryBruteSolve("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", true, false);
                 endStates = new ConcurrentBag<string>(solutions);
@@ -476,10 +502,15 @@ namespace Takuzu_Solver_and_Generator {
             }
 
             // Pick a random endState
-            string endState = endStates.ElementAt((new Random()).Next(endStates.Count));
+            StringBuilder endState = new StringBuilder(endStates.ElementAt(rnd.Next(endStates.Count)));
 
-            // TODO: Random recursief verwijderen van oplossing en dan checken of er 1 opl is 
-            return null;
+            while(endState.ToString().Length - endState.ToString().Replace("e","").Length < depth) {
+                endState[rnd.Next(endState.Length)] = 'e';
+            }
+            solutions = new ConcurrentBag<string>();
+            TryBruteSolve(endState.ToString(), true, true);
+            if (solutions.Count == 1) return endState.ToString();
+            return "noneFound";
         }
     }
 }
