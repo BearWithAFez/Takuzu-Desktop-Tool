@@ -3,16 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 
 namespace Takuzu_Solver_and_Generator {
     /// <summary>
@@ -21,7 +13,10 @@ namespace Takuzu_Solver_and_Generator {
     public partial class MainWindow : Window {
         // Vars
         readonly Button[] playCells, solveCells;
+        const int ATTEMPTS = 20; 
         ConcurrentBag<string> solutions = new ConcurrentBag<string>();
+        ConcurrentBag<string> puzzles = new ConcurrentBag<string>();
+        ConcurrentBag<string> endStates = new ConcurrentBag<string>();
         enum SolveStyles { bruteForce, bruteForcePrune, human, hybrid }
 
         // INIT
@@ -42,26 +37,49 @@ namespace Takuzu_Solver_and_Generator {
                 cellSolve30, cellSolve31, cellSolve32, cellSolve33, cellSolve34, cellSolve35
             };
             tbCode_Play.Text = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
-            tbOutput_Play.AppendText("Welcome! \n"); 
+            tbOutput_Play.AppendText("Welcome! \n");
+            tbOutput_Sol.AppendText("Welcome! \n");
+            tbOutput_Gen.AppendText("Welcome! \n");
+            cbStyle_Sol.ItemsSource = Enum.GetValues(typeof(SolveStyles));
         }
 
         // GEN 
         private void BtnGenerate_Gen_Click(object sender, RoutedEventArgs e) {
-
+            int attempts = 0;
+            if (Int32.TryParse(tbDepth_Gen.Text, out int depth)) {
+                if (Int32.TryParse(tbDemand_Gen.Text, out int demand)) {
+                    for (puzzles = new ConcurrentBag<string>(); (puzzles.Count < demand) && (attempts < ATTEMPTS);) {
+                        string puzzle = FindRandomPuzzle(depth);
+                        if (puzzle == "noneFound") {
+                            attempts++;
+                            tbOutput_Gen.AppendText("Miss...\n");
+                        } else if (!puzzles.Contains(puzzle)) {
+                            puzzles.Add(puzzle);
+                            tbOutput_Gen.AppendText("Hit!\n");
+                        } else {
+                            tbOutput_Gen.AppendText("Duplicate hit.\n");
+                        }
+                    }
+                } else {
+                    tbOutput_Gen.AppendText("Demand is not a valid int!\n");
+                }
+            } else {
+                tbOutput_Gen.AppendText("Depth is not a valid int!\n");
+            }
         }
 
         private void BtnSave_Gen_Click(object sender, RoutedEventArgs e) {
-
+            //todo: implement after generate!
         }
 
         // SOL
         private void BtnSolve_Sol_Click(object sender, RoutedEventArgs e) {
             tbSolution_Sol.Text = "";     
             
-            //TrySolve(tbCode_Sol.Text);
-            //tbOutput_Sol.AppendText(solutions.Count + " solutions found \n");
-            //tbSolution_Sol.Text = "" + solutions.Count;
-            tbCode_Sol.Text = HumanSolveItteration(tbCode_Sol.Text);
+            Solve(tbCode_Sol.Text, (SolveStyles) cbStyle_Sol.SelectedValue);
+            tbOutput_Sol.AppendText(solutions.Count + " solution(s) found \n");
+            foreach(var sol in solutions) tbSolution_Sol.AppendText(sol + ";");
+            tbOutput_Sol.ScrollToEnd();
         }
 
         private void BtnFill_Sol_Click(object sender, RoutedEventArgs e) {
@@ -111,20 +129,26 @@ namespace Takuzu_Solver_and_Generator {
         }
 
         // HELPERS
+        /// <summary>
+        /// Solves the puzzle in a certain way
+        /// </summary>
+        /// <param name="code">The puzzle</param>
+        /// <param name="style">The method</param>
         private void Solve(string code, SolveStyles style) {
             solutions = new ConcurrentBag<string>();
             DateTime start = DateTime.Now;
             switch (style) {
                 case SolveStyles.bruteForce:
-                    TrySolve(code, false);
+                    TryBruteSolve(code, false, false);
                     break;
                 case SolveStyles.bruteForcePrune:
-                    TrySolve(code, true);
+                    TryBruteSolve(code, true, false);
                     break;
                 case SolveStyles.human:
-                    
+                    TryHumanSolve(code, false);
                     break;
                 case SolveStyles.hybrid:
+                    TryHumanSolve(code, true);
                     break;
                 default:
                     // Unknown solve style
@@ -135,10 +159,31 @@ namespace Takuzu_Solver_and_Generator {
         }
 
         /// <summary>
+        /// Very quickly checks if the given code only has one solution
+        /// </summary>
+        /// <param name="code">The code to check</param>
+        /// <returns></returns>
+        private bool CheckUniqueSolution(string code) {
+            solutions = new ConcurrentBag<string>();
+            string solution = "" + code;
+            do {
+                code = "" + solution;
+                solution = "" + HumanSolveItteration(code);
+            }
+            while (solution != code);
+            if (QuickCheckIfErrorless(solution, true)) return true;
+            TryBruteSolve(solution, true, true);
+            if (solutions.Count >= 2 || solutions.Count == 0) return false;
+            return true;
+        }
+
+        /// <summary>
         /// Recursive solver with pruning
         /// </summary>
-        /// <param name="input">Current string</param>
-        private void TrySolve(string input, bool prune) {
+        /// <param name="input">The code</param>
+        /// <param name="prune">If pruning can be used</param>
+        /// <param name="quick">If its just a quick check</param>
+        private void TryBruteSolve(string input, bool prune, bool quick) {
             StringBuilder s = new StringBuilder(input);
 
             // End point?
@@ -153,9 +198,10 @@ namespace Takuzu_Solver_and_Generator {
             // Brute Force Me
             int i = input.IndexOf('e');
             s[i] = '0';
-            TrySolve(s.ToString(), prune);
+            TryBruteSolve(s.ToString(), prune, quick);
+            if (solutions.Count == 2 && quick) return;
             s[i] = '1';
-            TrySolve(s.ToString(), prune);
+            TryBruteSolve(s.ToString(), prune, quick);
         }
         
         /// <summary>
@@ -209,6 +255,9 @@ namespace Takuzu_Solver_and_Generator {
         private bool QuickCheckIfErrorless(string code, bool isSolution) {
             // Total length
             if (code.Length != 36) return false;
+
+            // Endpoint
+            if (code.IndexOf('e') != -1 && isSolution) return false;
 
             // # of 0 & 1
             if (code.Replace("1", "").Length < 18) return false;
@@ -296,7 +345,23 @@ namespace Takuzu_Solver_and_Generator {
             return errors;
         }
 
-        private void 
+        /// <summary>
+        /// Attempts to solve the puzzle as a human would
+        /// </summary>
+        /// <param name="input">the puzzle</param>
+        /// <param name="hybrid">if the solver can use BruteForcePruning when stuck</param>
+        private void TryHumanSolve(string input, bool hybrid) {
+            string solution = "" + input;
+            do {
+                input = "" + solution;
+                solution = ""+ HumanSolveItteration(input);
+            }
+            while (solution != input);
+            if (QuickCheckIfErrorless(solution, true)) solutions.Add(solution);
+            else if (hybrid) {
+                TryBruteSolve(solution, true, false);
+            }
+        }
 
         /// <summary>
         /// Does a single itteration of the human solve
@@ -399,6 +464,22 @@ namespace Takuzu_Solver_and_Generator {
                 }
             }
             return sub;
+        }
+
+        private string FindRandomPuzzle(int depth) {
+            // Make sure there are endStates avaible
+            if(endStates.Count == 0) {
+                solutions = new ConcurrentBag<string>();
+                TryBruteSolve("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", true, false);
+                endStates = new ConcurrentBag<string>(solutions);
+                solutions = new ConcurrentBag<string>();
+            }
+
+            // Pick a random endState
+            string endState = endStates.ElementAt((new Random()).Next(endStates.Count));
+
+            // TODO: Random recursief verwijderen van oplossing en dan checken of er 1 opl is 
+            return null;
         }
     }
 }
