@@ -18,9 +18,9 @@ namespace Takuzu_Solver_and_Generator {
         readonly Button[] playCells, solveCells;
         const int ATTEMPTS = 100000;
         Random rnd = new Random();
-        ConcurrentBag<string> solutions = new ConcurrentBag<string>();
-        ConcurrentBag<string> puzzles = new ConcurrentBag<string>();
-        ConcurrentBag<string> endStates = new ConcurrentBag<string>();
+        List<string> solutions = new List<string>();
+        List<string> puzzles = new List<string>();
+        List<string> endStates = new List<string>();
         enum SolveStyles { bruteForce, bruteForcePrune, human, hybrid }
 
         // INIT
@@ -50,11 +50,11 @@ namespace Takuzu_Solver_and_Generator {
         // GEN 
         private void BtnGenerate_Gen_Click(object sender, RoutedEventArgs e) {
             tbOutput_Gen.AppendText("New Generation started\n");
-            puzzles = new ConcurrentBag<string>();
+            puzzles = new List<string>();
             int attempts = 0;
             if (Int32.TryParse(tbDepth_Gen.Text, out int depth)) {
                 if (Int32.TryParse(tbDemand_Gen.Text, out int demand)) {
-                    for (puzzles = new ConcurrentBag<string>(); (puzzles.Count < demand) && (attempts < ATTEMPTS);) {
+                    for (puzzles = new List<string>(); (puzzles.Count < demand) && (attempts < ATTEMPTS);) {
                         string puzzle = FindRandomPuzzle(depth);
                         if (puzzle == "noneFound") {
                             attempts++;
@@ -156,7 +156,7 @@ namespace Takuzu_Solver_and_Generator {
         /// <param name="code">The puzzle</param>
         /// <param name="style">The method</param>
         private void Solve(string code, SolveStyles style) {
-            solutions = new ConcurrentBag<string>();
+            solutions = new List<string>();
             DateTime start = DateTime.Now;
             switch (style) {
                 case SolveStyles.bruteForce:
@@ -184,7 +184,7 @@ namespace Takuzu_Solver_and_Generator {
         /// <param name="code">The code to check</param>
         /// <returns></returns>
         private bool CheckUniqueSolution(string code) {
-            solutions = new ConcurrentBag<string>();
+            solutions = new List<string>();
             string solution = "" + code;
             do {
                 code = "" + solution;
@@ -495,10 +495,10 @@ namespace Takuzu_Solver_and_Generator {
             // Make sure there are endStates avaible
             if(endStates.Count == 0) {
                 tbOutput_Gen.AppendText("Generating endstates \n");
-                solutions = new ConcurrentBag<string>();
+                solutions = new List<string>();
                 TryBruteSolve("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", true, false);
-                endStates = new ConcurrentBag<string>(solutions);
-                solutions = new ConcurrentBag<string>();
+                endStates = new List<string>(solutions);
+                solutions = new List<string>();
             }
 
             // Pick a random endState
@@ -507,7 +507,7 @@ namespace Takuzu_Solver_and_Generator {
             while(endState.ToString().Length - endState.ToString().Replace("e","").Length < depth) {
                 endState[rnd.Next(endState.Length)] = 'e';
             }
-            solutions = new ConcurrentBag<string>();
+            solutions = new List<string>();
             TryBruteSolve(endState.ToString(), true, true);
             if (solutions.Count == 1) return endState.ToString();
             return "noneFound";
